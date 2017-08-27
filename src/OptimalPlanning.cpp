@@ -38,7 +38,6 @@
 #include <costmap_2d/costmap_2d_ros.h>
 #include <costmap_2d/costmap_2d.h>
 #include <nav_msgs/MapMetaData.h>
-//#include <>
 
 #include <ompl/base/SpaceInformation.h>
 #include <ompl/base/objectives/PathLengthOptimizationObjective.h>
@@ -210,24 +209,7 @@ void costmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg, const std::st
      else
          std::cout << "No solution found." << std::endl;
 }
-/*
-void visualizer()
-{
-  // The visual tools for interfacing with Rviz
-   ompl_visual_tools::OmplVisualToolsPtr visual_tools_;
 
-   // Load the tool for displaying in Rviz
-   visual_tools_.reset(new ompl_visual_tools::OmplVisualTools(BASE_FRAME));
-   visual_tools_->setSpaceInformation(si);
-   visual_tools_->setGlobalScale(100);
-
-   // Clear current rviz makers
-   visual_tools_->deleteAllMarkers();
-
-   visual_tools_->publishState(start, rviz_visual_tools::GREEN,  rviz_visual_tools::XLARGE, "plan_start_goal");
-   visual_tools_->publishState(goal,  rviz_visual_tools::ORANGE, rviz_visual_tools::XLARGE, "plan_start_goal");
-}
-*/
 int main(int argc, char** argv)
 {
     // The parsed arguments

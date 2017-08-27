@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  ompl_visual_tools
 )
 
 ## System dependencies are found with CMake's conventions
@@ -109,7 +110,7 @@ add_definitions(-std=c++11)
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES rrt_star
-  CATKIN_DEPENDS costmap_2d roscpp rospy std_msgs
+  CATKIN_DEPENDS costmap_2d roscpp rospy std_msgs ompl_visual_tools
   DEPENDS OMPL
 )
 
