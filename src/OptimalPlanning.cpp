@@ -38,12 +38,16 @@
 #include <costmap_2d/costmap_2d_ros.h>
 #include <costmap_2d/costmap_2d.h>
 #include <nav_msgs/MapMetaData.h>
+#include <visualization_msgs/Marker.h>
+
 
 #include <ompl/base/SpaceInformation.h>
 #include <ompl/base/objectives/PathLengthOptimizationObjective.h>
 #include <ompl/base/objectives/StateCostIntegralObjective.h>
 #include <ompl/base/objectives/MaximizeMinClearanceObjective.h>
 #include <ompl/base/spaces/RealVectorStateSpace.h>
+#include <ompl/base/spaces/SE3StateSpace.h>
+#include <ompl/base/spaces/SO3StateSpace.h>
 // For ompl::msg::setLogLevel
 #include "ompl/util/Console.h"
 
@@ -64,6 +68,8 @@
 
 namespace ob = ompl::base;
 namespace og = ompl::geometric;
+
+ros::Publisher vis_pub;
 /// @cond IGNORE
 boost::shared_ptr<const nav_msgs::OccupancyGrid> costmap;
 // Our "collision checker". For this demo, our robot's state space
@@ -112,6 +118,7 @@ public:
         }
     }
 };
+void visualize(og::PathGeometric* path);
 
 ob::OptimizationObjectivePtr getPathLengthObjective(const ob::SpaceInformationPtr& si);
 /*
@@ -204,10 +211,60 @@ void costmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg, const std::st
              std::static_pointer_cast<og::PathGeometric>(pdef->getSolutionPath())->
                  printAsMatrix(outFile);
              outFile.close();
+
+             og::PathGeometric* geometric_path = new og::PathGeometric(dynamic_cast<const og::PathGeometric&>(*pdef->getSolutionPath()));
+
+             visualize(geometric_path);
          }
      }
      else
          std::cout << "No solution found." << std::endl;
+}
+
+void visualize(og::PathGeometric* path)
+{
+
+     visualization_msgs::Marker marker;
+	   //marker.action = visualization_msgs::Marker::DELETEALL;
+	   //vis_pub.publish(marker);
+
+     for (std::size_t idx = 0; idx < path->getStateCount (); idx++)
+	   {   std::cout<<"iteration "<<idx<<std::endl;
+         // cast the abstract state type to the type we expect
+		     const ob::SE3StateSpace::StateType *se3state = path->getState(idx)->as<ob::SE3StateSpace::StateType>();
+         std::cout<<"iteration "<<idx<<std::endl;
+	            // extract the first component of the state and cast it to what we expect
+		     const ob::RealVectorStateSpace::StateType *pos = se3state->as<ob::RealVectorStateSpace::StateType>(0);
+         std::cout<<"iteration "<<idx<<std::endl;
+	            // extract the second component of the state and cast it to what we expect
+	       const ob::SO3StateSpace::StateType *rot = se3state->as<ob::SO3StateSpace::StateType>(1);
+         std::cout<<"iteration "<<idx<<std::endl;
+				 marker.header.frame_id = "world";
+				 marker.header.stamp = ros::Time();
+				 marker.ns = "path";
+				 marker.id = idx;
+				 marker.type = visualization_msgs::Marker::CUBE;
+				 marker.action = visualization_msgs::Marker::ADD;
+				 marker.pose.position.x = pos->values[0];
+				 marker.pose.position.y = pos->values[1];
+				 marker.pose.position.z = 0;
+         std::cout<<"iteration "<<idx<<std::endl;
+				 marker.pose.orientation.x = rot->x;
+				 marker.pose.orientation.y = rot->y;
+			 	 marker.pose.orientation.z = rot->z;
+				 marker.pose.orientation.w = rot->w;
+         std::cout<<"iteration "<<idx<<std::endl;
+				 marker.scale.x = 0.15;
+				 marker.scale.y = 0.15;
+				 marker.scale.z = 0.15;
+				 marker.color.a = 1.0;
+				 marker.color.r = 0.0;
+				 marker.color.g = 1.0;
+			   marker.color.b = 0.0;
+				 vis_pub.publish(marker);
+				 // ros::Duration(0.1).sleep();
+				 std::cout << "Published marker: " << idx << std::endl;
+		}
 }
 
 int main(int argc, char** argv)
