@@ -70,6 +70,7 @@ namespace ob = ompl::base;
 namespace og = ompl::geometric;
 
 ros::Publisher vis_pub;
+int i=0;
 /// @cond IGNORE
 boost::shared_ptr<const nav_msgs::OccupancyGrid> costmap;
 // Our "collision checker". For this demo, our robot's state space
@@ -97,7 +98,7 @@ public:
         // example, so we downcast state into the specific type.
         const auto* state2D =
             state->as<ob::RealVectorStateSpace::StateType>();
-
+        std::cout<<" "<<costmap->getCost(1,1)<<"blah"<<"   ";
         // Extract the robot's (x,y) position from its state
         double x = state2D->values[0];
         double y = state2D->values[1];
@@ -108,8 +109,8 @@ public:
         grid_y = (unsigned int)((y - costmap->info.origin.position.y) / costmap->info.resolution);
         // Distance formula between two points, offset by the circle's
         // radius
-        if(costmap->data.at((int)(grid_x * costmap->info.width + grid_y)) <= 10)
-        {
+        if(costmap->data.at((int)(grid_x * costmap->info.width + grid_y)) <= 20)
+        { //std::cout<<"check"<<costmap->data.at((int)(grid_x + grid_y * costmap->info.width))<<" "<<grid_x + grid_y * costmap->info.width<<std::endl;
           return 1;
         }
         else
@@ -118,6 +119,8 @@ public:
         }
     }
 };
+
+
 void visualize(const og::PathGeometric* path);
 
 ob::OptimizationObjectivePtr getPathLengthObjective(const ob::SpaceInformationPtr& si);
@@ -153,6 +156,7 @@ void costmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg, const std::st
 
      // Set the object used to check which states in the space are valid
      si->setStateValidityChecker(std::make_shared<ValidityChecker>(si));
+     si->setStateValidityCheckingResolution(0.0005);
 
      si->setup();
 
@@ -224,9 +228,10 @@ void costmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg, const std::st
 void visualize(const og::PathGeometric* path)
 {
     ros::Duration(3).sleep();
+    visualization_msgs::Marker marker, line;
+
     for (std::size_t idx = 0; idx < path->getStateCount (); idx++)
     {
-      visualization_msgs::Marker marker;
 
       // cast the abstract state type to the type we expect
       const auto *rstate = static_cast<const ob::RealVectorStateSpace::StateType *>(path->getState(idx));
@@ -235,29 +240,46 @@ void visualize(const og::PathGeometric* path)
       // extract the second component of the state and cast it to what we expect
       const auto *qstate = static_cast<const ob::SO3StateSpace::StateType *>(path->getState(idx));
 
-      marker.header.frame_id = "map";
-      marker.header.stamp = ros::Time::now();
+      marker.header.frame_id = line.header.frame_id = "map";
+      marker.header.stamp = line.header.stamp = ros::Time::now();
       marker.ns = "path";
+      line.ns = "pathline";
       marker.id = idx;
-      marker.type = visualization_msgs::Marker::CUBE;
-      marker.action = visualization_msgs::Marker::ADD;
+      line.id = idx;
+      marker.type  = visualization_msgs::Marker::CUBE;
+      line.type = visualization_msgs::Marker::LINE_STRIP;
+      marker.action = line.action = visualization_msgs::Marker::ADD;
+      geometry_msgs::Point p;
       marker.pose.position.x = rstate->values[0];
       marker.pose.position.y = rstate->values[1];
       marker.pose.position.z = 0;
+      p.x = rstate->values[0];
+      p.y = rstate->values[1];
+      p.z = 0;
+      marker.points.push_back(p);
+      line.points.push_back(p);
       //std::cout<<"iteration "<<idx<<std::endl;
       marker.pose.orientation.x = qstate->x;
       marker.pose.orientation.y = qstate->y;
       marker.pose.orientation.z = qstate->z;
       marker.pose.orientation.w = qstate->w;
-      // std::cout<<"iteration "<<idx<<std::endl;
+      line.pose.orientation.w = 1;
       marker.scale.x = 0.2;
       marker.scale.y = 0.2;
       marker.scale.z = 0.2;
-      marker.color.a = 0.5;
+      line.scale.x = 0.1;
+      line.scale.y = 0.1;
+      line.scale.z = 0.4;
+      marker.color.a = 1.0;
       marker.color.r = 0.0;
       marker.color.g = 1.0;
       marker.color.b = 0.0;
+      line.color.a = 0.5;
+      line.color.r = 0.0;
+      line.color.g = 0.0;
+      line.color.b = 1.0;
       vis_pub.publish(marker);
+      vis_pub.publish(line);
       std::cout << "Published marker: " << idx << std::endl;
   }
 }
