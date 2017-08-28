@@ -118,7 +118,7 @@ public:
         }
     }
 };
-void visualize(og::PathGeometric* path);
+void visualize(const og::PathGeometric* path);
 
 ob::OptimizationObjectivePtr getPathLengthObjective(const ob::SpaceInformationPtr& si);
 /*
@@ -212,59 +212,54 @@ void costmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg, const std::st
                  printAsMatrix(outFile);
              outFile.close();
 
-             og::PathGeometric* geometric_path = new og::PathGeometric(dynamic_cast<const og::PathGeometric&>(*pdef->getSolutionPath()));
-
-             visualize(geometric_path);
+             const og::PathGeometric* path = new og::PathGeometric(dynamic_cast<const og::PathGeometric&>(*pdef->getSolutionPath()));
+             path->print(std::cout);
+             visualize(path);
          }
      }
      else
          std::cout << "No solution found." << std::endl;
 }
 
-void visualize(og::PathGeometric* path)
+void visualize(const og::PathGeometric* path)
 {
+    ros::Duration(3).sleep();
+    for (std::size_t idx = 0; idx < path->getStateCount (); idx++)
+    {
+      visualization_msgs::Marker marker;
 
-     visualization_msgs::Marker marker;
-	   //marker.action = visualization_msgs::Marker::DELETEALL;
-	   //vis_pub.publish(marker);
+      // cast the abstract state type to the type we expect
+      const auto *rstate = static_cast<const ob::RealVectorStateSpace::StateType *>(path->getState(idx));
+      const ob::SE3StateSpace::StateType *se3state = path->getState(idx)->as<ob::SE3StateSpace::StateType>();
 
-     for (std::size_t idx = 0; idx < path->getStateCount (); idx++)
-	   {   std::cout<<"iteration "<<idx<<std::endl;
-         // cast the abstract state type to the type we expect
-		     const ob::SE3StateSpace::StateType *se3state = path->getState(idx)->as<ob::SE3StateSpace::StateType>();
-         std::cout<<"iteration "<<idx<<std::endl;
-	            // extract the first component of the state and cast it to what we expect
-		     const ob::RealVectorStateSpace::StateType *pos = se3state->as<ob::RealVectorStateSpace::StateType>(0);
-         std::cout<<"iteration "<<idx<<std::endl;
-	            // extract the second component of the state and cast it to what we expect
-	       const ob::SO3StateSpace::StateType *rot = se3state->as<ob::SO3StateSpace::StateType>(1);
-         std::cout<<"iteration "<<idx<<std::endl;
-				 marker.header.frame_id = "world";
-				 marker.header.stamp = ros::Time();
-				 marker.ns = "path";
-				 marker.id = idx;
-				 marker.type = visualization_msgs::Marker::CUBE;
-				 marker.action = visualization_msgs::Marker::ADD;
-				 marker.pose.position.x = pos->values[0];
-				 marker.pose.position.y = pos->values[1];
-				 marker.pose.position.z = 0;
-         std::cout<<"iteration "<<idx<<std::endl;
-				 marker.pose.orientation.x = rot->x;
-				 marker.pose.orientation.y = rot->y;
-			 	 marker.pose.orientation.z = rot->z;
-				 marker.pose.orientation.w = rot->w;
-         std::cout<<"iteration "<<idx<<std::endl;
-				 marker.scale.x = 0.15;
-				 marker.scale.y = 0.15;
-				 marker.scale.z = 0.15;
-				 marker.color.a = 1.0;
-				 marker.color.r = 0.0;
-				 marker.color.g = 1.0;
-			   marker.color.b = 0.0;
-				 vis_pub.publish(marker);
-				 // ros::Duration(0.1).sleep();
-				 std::cout << "Published marker: " << idx << std::endl;
-		}
+      // extract the second component of the state and cast it to what we expect
+      const auto *qstate = static_cast<const ob::SO3StateSpace::StateType *>(path->getState(idx));
+
+      marker.header.frame_id = "map";
+      marker.header.stamp = ros::Time::now();
+      marker.ns = "path";
+      marker.id = idx;
+      marker.type = visualization_msgs::Marker::CUBE;
+      marker.action = visualization_msgs::Marker::ADD;
+      marker.pose.position.x = rstate->values[0];
+      marker.pose.position.y = rstate->values[1];
+      marker.pose.position.z = 0;
+      //std::cout<<"iteration "<<idx<<std::endl;
+      marker.pose.orientation.x = qstate->x;
+      marker.pose.orientation.y = qstate->y;
+      marker.pose.orientation.z = qstate->z;
+      marker.pose.orientation.w = qstate->w;
+      // std::cout<<"iteration "<<idx<<std::endl;
+      marker.scale.x = 0.2;
+      marker.scale.y = 0.2;
+      marker.scale.z = 0.2;
+      marker.color.a = 0.5;
+      marker.color.r = 0.0;
+      marker.color.g = 1.0;
+      marker.color.b = 0.0;
+      vis_pub.publish(marker);
+      std::cout << "Published marker: " << idx << std::endl;
+  }
 }
 
 int main(int argc, char** argv)
@@ -279,7 +274,7 @@ int main(int argc, char** argv)
   //  costmap_ros = new costmap_2d::Costmap2DROS("costmap", tf_);
 
     ros::Subscriber map_sub = nh.subscribe<nav_msgs::OccupancyGrid>("/map",1,boost::bind(&costmapCallback, _1, outputFile));
-
+    vis_pub = nh.advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
     ros::spin();
     return 0;
 }
