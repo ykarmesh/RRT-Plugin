@@ -3,7 +3,7 @@
 		<param name="frame_id" value="/map"/>
 	</node>
 <!--	<node name="rrt" pkg="rrt_star" type="optimal_planning_node" launch-prefix="valgrind" >
-		<param name="frame_id" value="/map"/>
+		<rosparam file="$(find rrt_star)/params/costmap.yaml" command="load" ns="global_costmap" />	
 	</node>	
 -->
 </launch>

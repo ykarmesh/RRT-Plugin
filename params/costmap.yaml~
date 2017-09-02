@@ -1,0 +1,42 @@
+global_costmap:
+  global_frame: /map
+  robot_base_frame: base_link
+ 
+  transform_tolerance: 0.5
+  robot_radius: 0.3
+
+  update_frequency: 2.0
+  publish_frequency: 1.0
+  static_map: true
+  rolling_window: false
+
+  plugins:
+    - {name: static_layer,            type: "costmap_2d::StaticLayer"}
+    - {name: obstacle_layer,          type: "costmap_2d::VoxelLayer"}
+    - {name: inflation_layer,         type: "costmap_2d::InflationLayer"}
+
+  static:	
+    enabled: true
+    unknown_cost_value: -1
+    lethal_cost_threshold: 100
+    map_topic: /map
+
+  obstacle_layer:
+    enabled: true
+   # observation_persistence: 10000 for how much time to keep the obstacle in the map
+    obstacle_range: 3.0
+    raytrace_range: 4.0
+    max_obstacle_height: 1.5
+    inflation_radius: 0.2
+    track_unknown_space: true
+    publish_voxel_map: false
+    combination_method: 1
+ 
+    observation_sources: point_cloud_sensor
+    point_cloud_sensor: {data_type: PointCloud, topic: pc1, observation_persistence: 10000, marking: true, clearing: true}
+
+  inflation_layer:
+    enabled:              true
+    cost_scaling_factor:  10.0  # exponential rate at which the obstacle cost drops off (default: 10)
+    inflation_radius:     0.5  # max. distance from an obstacle at which costs are incurred for planning paths.
+  
