@@ -2,9 +2,16 @@
 	<node name="map_server" pkg="map_server" type="map_server" args="$(find rrt_star)/map/maze.yaml">
 		<param name="frame_id" value="/map"/>
 	</node>
-<!--	<node name="rrt" pkg="rrt_star" type="optimal_planning_node" launch-prefix="valgrind" >
-		<rosparam file="$(find rrt_star)/params/costmap.yaml" command="load" ns="global_costmap" />	
+	<node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0.0 0.0 0.0 0 0 0 1 /map /odom 100"/>
+	<node pkg="tf" type="static_transform_publisher" name="odom_to_base_link" args="2.0 2.0 0.0 0 0 0 1 /odom /base_link 100"/>
+	
+	<node name="rrt" pkg="rrt_star" type="optimal_planning_node" output="screen"  >
+		<rosparam file="$(find rrt_star)/params/costmap.yaml" command="load" />
+		<rosparam file="$(find rrt_star)/params/plan.yaml" command="load" />	
+		<remap from="/goal" to="/move_base_simple/goal" />	
 	</node>	
--->
+
+	<node name="rviz" pkg="rviz" type="rviz" args="-d $(find rrt_star)/params/rrt_rviz.rviz" />
+		
 </launch>
 	

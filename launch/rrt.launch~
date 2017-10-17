@@ -1,9 +1,0 @@
-<launch>
-	<node name="map_server" pkg="map_server" type="map_server" args="$(find rrt_star)/map/maze.yaml">
-		<param name="frame_id" value="/map"/>
-	</node>
-<!--	<node name="rrt" pkg="rrt_star" type="optimal_planning_node" launch-prefix="valgrind" >
-	</node>	
--->
-</launch>
-	

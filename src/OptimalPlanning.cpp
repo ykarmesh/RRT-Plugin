@@ -39,15 +39,20 @@
 #include <costmap_2d/costmap_2d.h>
 #include <nav_msgs/MapMetaData.h>
 #include <visualization_msgs/Marker.h>
-
+#include "rrt_star/costmap_model.h"
+#include "costmap_model.cpp"
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Pose2D.h>
 
 #include <ompl/base/SpaceInformation.h>
 #include <ompl/base/objectives/PathLengthOptimizationObjective.h>
 #include <ompl/base/objectives/StateCostIntegralObjective.h>
 #include <ompl/base/objectives/MaximizeMinClearanceObjective.h>
 #include <ompl/base/spaces/RealVectorStateSpace.h>
+#include <ompl/base/spaces/SE2StateSpace.h>
 #include <ompl/base/spaces/SE3StateSpace.h>
 #include <ompl/base/spaces/SO3StateSpace.h>
+
 // For ompl::msg::setLogLevel
 #include "ompl/util/Console.h"
 
@@ -65,137 +70,157 @@
 
 #include <fstream>
 
+#include <rviz_visual_tools/rviz_visual_tools.h>
+
+#include "rrt_star/rrt.h"
 
 namespace ob = ompl::base;
 namespace og = ompl::geometric;
 
 ros::Publisher vis_pub;
-int i=0;
+ros::Publisher vis_pub1;
+
 /// @cond IGNORE
-boost::shared_ptr<const nav_msgs::OccupancyGrid> costmap;
-// Our "collision checker".
-class ValidityChecker : public ob::StateValidityChecker
-{
-public:
-    ValidityChecker(const ob::SpaceInformationPtr& si) :
-        ob::StateValidityChecker(si) {}
 
-    // Returns whether the given state's position overlaps the
-    // circular obstacle
-    bool isValid(const ob::State* state) const override
-    {
-        return this->clearance(state) > 0.0;
-    }
-
-    // Returns the distance from the given state's position to the
-    // boundary of the circular obstacle.
-    double clearance(const ob::State* state) const override
-    {
-        // We know we're working with a RealVectorStateSpace in this
-        // example, so we downcast state into the specific type.
-        const auto* state2D =
-            state->as<ob::RealVectorStateSpace::StateType>();
-        //std::cout<<" "<<costmap->getCost(1,1)<<"blah"<<"   ";
-        // Extract the robot's (x,y) position from its state
-        double x = state2D->values[0];
-        double y = state2D->values[1];
-
-        unsigned int grid_x, grid_y;
-
-        grid_x = (unsigned int)((x - costmap->info.origin.position.x) / costmap->info.resolution);
-        grid_y = (unsigned int)((y - costmap->info.origin.position.y) / costmap->info.resolution);
-        // Distance formula between two points, offset by the circle's
-        // radius
-        if(costmap->data.at((int)(grid_x * costmap->info.width + grid_y)) <= 20)
-        { //std::cout<<"check"<<costmap->data.at((int)(grid_x + grid_y * costmap->info.width))<<" "<<grid_x + grid_y * costmap->info.width<<std::endl;
-          return 1;
-        }
-        else
-        {
-          return 0;
-        }
-    }
-};
 
 class Plan{
 public:
-    Plan(costmap_2d::Costmap2DROS* cmap)
-    { ros::NodeHandle private_nh("~");
-      ros::Subscriber goal_sub = private_nh.subscribe<geometry_msgs::PoseStamped>("/move_base_simple/goal", 1, &Plan::goalCb);
-      cmap_ = cmap;
+    Plan(costmap_2d::Costmap2DROS* cmap_ros): initialized_(false)//, private_nh_(nh) ros::NodeHandle nh
+    {
+      cmap_ros_ = cmap_ros;
+      cmap_ = cmap_ros->getCostmap();
+      world_model_ = new rrt_star::CostmapModel(*cmap_);
+    }
+
+    ~Plan()
+    {
+      delete world_model_;
     }
 
     void initrrt()
     {
-      space = ob::StateSpacePtr(new ob::RealVectorStateSpace(2));
-      // set the bounds
-      ob::RealVectorBounds bounds(2);
-      bounds.setLow(0, costmap->info.origin.position.x);
-      bounds.setHigh(0, costmap->info.origin.position.x + costmap->info.width * costmap->info.resolution);
-      bounds.setLow(1, costmap->info.origin.position.y);
-      bounds.setHigh(1, costmap->info.origin.position.y + costmap->info.height * costmap->info.resolution);
-      space->setBounds(bounds);
-      //std::cout<< costmap->info.origin.position.x + costmap->info.width * costmap->info.resolution<<" "<<costmap->info.origin.position.y + costmap->info.height * costmap->info.resolution<<std::endl;
-      // Construct a space information instance for this state space
+      if(!initialized_)
+      {
+        ROS_INFO("Initializing planner with costmap");
 
-      si = ob::SpaceInformationPtr(new ob::SpaceInformation(space));
+        ros::NodeHandle private_nh("~");
+        //ros::NodeHandle nh;
+        private_nh_ = private_nh;
+        private_nh_.param("max_footprint_cost", max_footprint_cost_, 256);
+        private_nh_.param("Inscribed_radius", inscribed_radius_, 0.25);
+        private_nh_.param("Circumscribed_radius", circumscribed_radius_, 0.25);
 
-      // Set the object used to check which states in the space are valid
-      si->setStateValidityChecker(std::make_shared<ValidityChecker>(si));
+        goal_sub = private_nh_.subscribe<geometry_msgs::PoseStamped>("/move_base_simple/goal", 1, &Plan::goalCb, this);
 
-      si->setup();
+        space = ob::StateSpacePtr(new ob::SE2StateSpace());
 
-      // Set our robot's starting state to be the bottom-left corner of
-      // the environment, or (0,0).
-      ob::ScopedState<> start(space);
-      start->as<ob::RealVectorStateSpace::StateType>()->values[0] = 0.0;
-      start->as<ob::RealVectorStateSpace::StateType>()->values[1] = 0.0;
+        // set the bounds
+        ob::RealVectorBounds bounds(2);
+        bounds.setLow(0, cmap_->getOriginX());
+        bounds.setHigh(0, cmap_->getOriginX() + cmap_->getSizeInCellsX() * cmap_->getResolution());
+        bounds.setLow(1, cmap_->getOriginY());
+        bounds.setHigh(1, cmap_->getOriginY() + cmap_->getSizeInCellsY() * cmap_->getResolution());
+        space->as<ob::SE2StateSpace>()->setBounds(bounds);
 
-      // Set our robot's goal state to be the top-right corner of the
-      // environment, or (1,1).
-      ob::ScopedState<> goal(space);
-      goal->as<ob::RealVectorStateSpace::StateType>()->values[0] = 0.0;
-      goal->as<ob::RealVectorStateSpace::StateType>()->values[1] = 0.0;
+        // Construct a space information instance for this state space
 
-      // Create a problem instance
-      pdef = ob::ProblemDefinitionPtr(new ob::ProblemDefinition(si));
+        si = ob::SpaceInformationPtr(new ob::SpaceInformation(space));
 
-      // Set the start and goal states
-      pdef->setStartAndGoalStates(start, goal);
-      //std::cout<<"second"<<std::endl;
-      // Create the optimization objective specified by our command-line argument.
-      // This helper function is simply a switch statement.
-      pdef->setOptimizationObjective(getPathLengthObjective(si));
+        // Set the object used to check which states in the space are valid
+        si->setStateValidityChecker(boost::bind(&Plan::isStateValid, this, _1));
+        si->setStateValidityCheckingResolution(0.01);
 
-      std::cout<<"initialized";
+        si->setup();
+
+        // Create a problem instance
+        pdef = ob::ProblemDefinitionPtr(new ob::ProblemDefinition(si));
+
+        // Create the optimization objective specified by our command-line argument.
+        // This helper function is simply a switch statement.
+        pdef->setOptimizationObjective(getPathLengthObjective(si));
+
+        initialized_ = true;
+
+      }
+      else
+        ROS_WARN("This planner has already been initialized... doing nothing");
     }
 
-    void setGoal(double x, double y)
+    void setGoal(double x, double y, double theta)
     {
-        if(prev_goal[0] != x || prev_goal[1] != y )
+        if(prev_goal[0] != x || prev_goal[1] != y || prev_goal[2] != theta)
         {
             ob::ScopedState<> goal(space);
-            start->as<ob::RealVectorStateSpace::StateType>()->values[0] = x;
-            start->as<ob::RealVectorStateSpace::StateType>()->values[1] = y;
+            goal->as<ob::SE2StateSpace::StateType>()->setX(x);
+            goal->as<ob::SE2StateSpace::StateType>()->setY(y);
+            goal->as<ob::SE2StateSpace::StateType>()->setYaw(theta);
             prev_goal[0] = x;
             prev_goal[1] = y;
-            pdef->clearGoal();
+            prev_goal[2] = theta;
 			      pdef->setGoalState(goal);
-            std::cout << "Goal point set to: " << x << " " << y << std::endl;
         }
     }
 
-    void setStart(double x, double y)
+    void setStart(double x, double y, double theta)
     {
         ob::ScopedState<> start(space);
-        start->as<ob::RealVectorStateSpace::StateType>()->values[0] = x;
-        start->as<ob::RealVectorStateSpace::StateType>()->values[1] = y;
+        start->as<ob::SE2StateSpace::StateType>()->setX(x);
+        start->as<ob::SE2StateSpace::StateType>()->setY(y);
+        start->as<ob::SE2StateSpace::StateType>()->setYaw(theta);
         pdef->clearStartStates();
         pdef->addStartState(start);
     }
 
+    bool isStateValid(const ompl::base::State *state)
+	  {
+      if(!initialized_)
+      {
+        ROS_ERROR("The planner has not been initialized, please call initrrt() to use the planner");
+        return -1.0;
+      }
+
+      double costs = 0.0;
+
+      std::vector<geometry_msgs::Point> footprint_spec_ = cmap_ros_->getRobotFootprint();
+  		if(footprint_spec_.size() < 3)
+  		{	return -1.0;
+        ROS_ERROR("Footprint not specified, assuming a point robot model");
+      }
+
+      geometry_msgs::Point robot_position;
+      double theta;
+      robot_position.x = state->as<ob::SE2StateSpace::StateType>()->getX();
+      robot_position.y = state->as<ob::SE2StateSpace::StateType>()->getY();
+      theta = state->as<ob::SE2StateSpace::StateType>()->getYaw();
+
+  		// build the oriented footprint
+  		double cos_th = cos(theta);
+  		double sin_th = sin(theta);
+  		std::vector<geometry_msgs::Point> oriented_footprint;
+  		for(unsigned int i = 0; i < footprint_spec_.size(); i++){
+  			geometry_msgs::Point new_pt;
+  			new_pt.x = robot_position.x + (footprint_spec_[i].x * cos_th - footprint_spec_[i].y * sin_th);
+  			new_pt.y = robot_position.y + (footprint_spec_[i].x * sin_th - footprint_spec_[i].y * cos_th);
+  			oriented_footprint.push_back(new_pt);
+      }
+
+      // check if the footprint is legal
+      costs = world_model_->footprintCost(robot_position, oriented_footprint, inscribed_radius_, circumscribed_radius_);
+
+      if( (costs >= 0) && (costs < max_footprint_cost_) )
+      {  return true;
+      }
+      return false;
+    }
+
     void rrtplan(void)
     {
+        ROS_INFO("Planning has started");
+        if(!initialized_){
+          ROS_ERROR("The planner has not been initialized, please call initrrt() to use the planner");
+          return;
+        }
+
         // Construct the optimal planner specified by our command line argument.
         // This helper function is simply a switch statement.
         ob::PlannerPtr optimizingPlanner = std::make_shared<og::RRTstar>(si);
@@ -205,52 +230,46 @@ public:
         optimizingPlanner->setup();
 
         // print the settings for this space
-		    si->printSettings(std::cout);
-
+		    //si->printSettings(std::cout);
+        ob::ScopedState<> goal(space);
+        //ob::GoalPtr goal= pdef->getGoal();
 	      // print the problem settings
 		    pdef->print(std::cout);
 
 	       // attempt to solve the problem within one second of planning time
-		    ob::PlannerStatus solved = rrtplan->solve(0.05);
+		    ob::PlannerStatus solved = optimizingPlanner->solve(1.0);
 
         if (solved)
         {
             // Output the length of the path found
-            std::cout
-                << optimizingPlanner->getName()
-                << " found a solution of length "
-                << pdef->getSolutionPath()->length()
-                << " with an optimization objective value of "
-                << pdef->getSolutionPath()->cost(pdef->getOptimizationObjective()) << std::endl;
+            ROS_INFO_STREAM(optimizingPlanner->getName()<< " found a solution of length "<< pdef->getSolutionPath()->length()
+            << " with an optimization objective value of "<< pdef->getSolutionPath()->cost(pdef->getOptimizationObjective()));
 
-            // If a filename was specified, output the path as a matrix to
-            // that file for visualization
-            if (!outputFile.empty())
-            {
-                std::ofstream outFile(outputFile.c_str());
-                std::static_pointer_cast<og::PathGeometric>(pdef->getSolutionPath())->
-                    printAsMatrix(outFile);
-                outFile.close();
-
-                path = new og::PathGeometric(dynamic_cast<const og::PathGeometric&>(*pdef->getSolutionPath()));
-                path->print(std::cout);
-                visualize(path);
-          }
-      }
-      else
-          std::cout << "No solution found." << std::endl;
+            path_ = new og::PathGeometric(dynamic_cast<const og::PathGeometric&>(*pdef->getSolutionPath()));
+            path_->print(std::cout);
+            visualize(path_);
+          //}
+            pdef->clearSolutionPaths();
+            delete path_;
+        }
+        else
+          ROS_ERROR("No solution found");
     }
 
-    void visualize(void)
+    void visualize(const og::PathGeometric* path)
     {
-        ros::Duration(3).sleep();
+        ros::Duration(1).sleep();
         visualization_msgs::Marker marker, line;
+        //marker.action = visualization_msgs::Marker::DELETEALL;
+  			//vis_pub.publish(marker);
+        //rviz_visual_tools::RvizVisualTools rviz_interface("map","/visualization_marker_array");
+        //rviz_interface.deleteAllMarkers();
 
         for (std::size_t idx = 0; idx < path->getStateCount (); idx++)
         {
 
           // cast the abstract state type to the type we expect
-          const auto *rstate = static_cast<const ob::RealVectorStateSpace::StateType *>(path->getState(idx));
+          const auto *rstate = static_cast<const ob::SE2StateSpace::StateType *>(path->getState(idx));
           const ob::SE3StateSpace::StateType *se3state = path->getState(idx)->as<ob::SE3StateSpace::StateType>();
 
           // extract the second component of the state and cast it to what we expect
@@ -266,15 +285,14 @@ public:
           line.type = visualization_msgs::Marker::LINE_STRIP;
           marker.action = line.action = visualization_msgs::Marker::ADD;
           geometry_msgs::Point p;
-          marker.pose.position.x = rstate->values[0];
-          marker.pose.position.y = rstate->values[1];
+          marker.pose.position.x = rstate->getX();
+          marker.pose.position.y = rstate->getY();
           marker.pose.position.z = 0;
-          p.x = rstate->values[0];
-          p.y = rstate->values[1];
+          p.x = rstate->getX();
+          p.y = rstate->getY();
           p.z = 0;
           marker.points.push_back(p);
           line.points.push_back(p);
-          //std::cout<<"iteration "<<idx<<std::endl;
           marker.pose.orientation.x = qstate->x;
           marker.pose.orientation.y = qstate->y;
           marker.pose.orientation.z = qstate->z;
@@ -295,32 +313,47 @@ public:
           line.color.g = 0.0;
           line.color.b = 1.0;
           vis_pub.publish(marker);
-          vis_pub.publish(line);
+          vis_pub1.publish(line);
           std::cout << "Published marker: " << idx << std::endl;
       }
     }
 
-    void goalCb(const geometry_msgs::PoseStamped::ConstPtr &goal)
+    ob::OptimizationObjectivePtr getPathLengthObjective(const ob::SpaceInformationPtr& si)
     {
-    	  setGoal(goal->point.x, goal->point.y);
+        return std::make_shared<ob::PathLengthOptimizationObjective>(si);
+    }
+
+    void goalCb(const geometry_msgs::PoseStamped::ConstPtr& goal)
+    {
+    	  setGoal(goal->pose.position.x, goal->pose.position.y, getTheta(goal->pose.orientation));
+        ROS_INFO_STREAM("New goal recieved at ["<< goal->pose.position.x <<"]["<<goal->pose.position.y<<"]");
           //set start state
         tf::Stamped<tf::Pose> global_pose;
-        cmap_->getRobotPose(global_pose);
+        cmap_ros_->getRobotPose(global_pose);
 
-        setStart(global_pose.getOrigin().x(),global_pose.getOrigin().y());
-        //geometry_msgs::PoseStamped start;
-        //start.header.stamp = global_pose.stamp_;
-        //start.header.frame_id = global_pose.frame_id_;
-        //start.pose.position.x = global_pose.getOrigin().x();
-        //start.pose.position.y = global_pose.getOrigin().y();
-        //start.pose.position.z = global_pose.getOrigin().z();
-        //start.pose.orientation.x = global_pose.getRotation().x();
-        //start.pose.orientation.y = global_pose.getRotation().y();
-        //start.pose.orientation.z = global_pose.getRotation().z();
-        //start.pose.orientation.w = global_pose.getRotation().w();
+        setStart(global_pose.getOrigin().x(),global_pose.getOrigin().y(), getTheta(global_pose.getRotation()));
+        ROS_INFO_STREAM("New start initialized at ["<< global_pose.getOrigin().x() <<"]["<<global_pose.getOrigin().y()<<"]");
+        rrtplan();
+    }
+    double getTheta(geometry_msgs::Quaternion msg)
+    {
+      tf::Quaternion q(msg.x, msg.y, msg.z, msg.w);
+      tf::Matrix3x3 m(q);
+      double roll, pitch, yaw;
+      m.getRPY(roll, pitch, yaw);
+      return yaw;
+    }
+    double getTheta(tf::Quaternion q)
+    {
+      tf::Matrix3x3 m(q);
+      double roll, pitch, yaw;
+      m.getRPY(roll, pitch, yaw);
+      return yaw;
     }
 
 private:
+
+    ros::NodeHandle private_nh_;
 
     ob::StateSpacePtr space;
 
@@ -330,18 +363,30 @@ private:
     // create a problem instance
     ob::ProblemDefinitionPtr pdef;
 
-    double prev_goal[2];
+    double prev_goal[3];
 
-    const og::PathGeometric* path;
+    const og::PathGeometric* path_;
 
-    std::string outputFile("outputfile");
+    bool initialized_ = false;
 
-    std::shared_ptr<costmap_2d::Costmap2DROS> cmap_;
-}
+    //const std::string outputFile("outputfile");
 
+    costmap_2d::Costmap2DROS* cmap_ros_;
 
-ob::OptimizationObjectivePtr getPathLengthObjective(const ob::SpaceInformationPtr& si);
+    costmap_2d::Costmap2D* cmap_;
+
+    int max_footprint_cost_;
+
+    double inscribed_radius_, circumscribed_radius_;
+
+    rrt_star::CostmapModel *world_model_;
+
+    ros::Subscriber goal_sub;
+};
+
 /*
+ob::OptimizationObjectivePtr getPathLengthObjective(const ob::SpaceInformationPtr& si);
+
 ob::OptimizationObjectivePtr getThresholdPathLengthObj(const ob::SpaceInformationPtr& si);
 
 ob::OptimizationObjectivePtr getClearanceObjective(const ob::SpaceInformationPtr& si);
@@ -355,6 +400,7 @@ ob::OptimizationObjectivePtr getPathLengthObjWithCostToGo(const ob::SpaceInforma
 
 void mapserverCallback(const nav_msgs::OccupancyGrid::ConstPtr &msg, Plan* planptr)
 {
+    ROS_INFO("New map recieved from Map_Server");
     ros::Duration(1).sleep();
 	  planptr->initrrt();
 }
@@ -370,13 +416,14 @@ int main(int argc, char** argv)
 
     costmap_2d::Costmap2DROS costmap("global_costmap",tf);
 
-    ros::Subscriber map_sub = nh.subscribe<nav_msgs::OccupancyGrid>("/map", 1, &mapserverCallback);
-
-    vis_pub = nh.advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
-
     Plan planner_object(&costmap);
 
-    ros::spin());
+    ros::Subscriber map_sub = nh.subscribe<nav_msgs::OccupancyGrid>("/map", 1, boost::bind(&mapserverCallback, _1, &planner_object));
+
+    vis_pub = nh.advertise<visualization_msgs::Marker>( "visualization_marker", 0 );
+    vis_pub1 = nh.advertise<visualization_msgs::Marker>( "visualization_marker_line", 0 );
+
+    ros::spin();
     return 0;
 }
 

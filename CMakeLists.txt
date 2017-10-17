@@ -14,6 +14,8 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  rviz_visual_tools
+  nav_core
 )
 
 ## System dependencies are found with CMake's conventions
@@ -108,8 +110,8 @@ add_definitions(-std=c++11)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES rrt_star
-  CATKIN_DEPENDS costmap_2d roscpp rospy std_msgs
+#  LIBRARIES rrt_star
+#  CATKIN_DEPENDS costmap_2d roscpp rospy std_msgs rviz_visual_tools base_local_planner
   DEPENDS OMPL
 )
 
@@ -126,14 +128,15 @@ include_directories(
 )
 
 ## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/rrt_star.cpp
-# )
+add_library(${PROJECT_NAME} src/costmap_model.cpp)
+add_library(rrt_lib 
+	src/rrt.cpp
+	src/costmap_model.cpp)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
@@ -148,12 +151,17 @@ add_executable(optimal_planning_node src/OptimalPlanning.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#add_dependencies(optimal_planning_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 link_libraries(${OMPL_LIBRARIES_DIRS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(optimal_planning_node
+   ${catkin_LIBRARIES}
+   ${OMPL_LIBRARIES}
+)
+
+target_link_libraries(rrt_lib
    ${catkin_LIBRARIES}
    ${OMPL_LIBRARIES}
 )
@@ -173,18 +181,18 @@ target_link_libraries(optimal_planning_node
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_node
+#install(TARGETS ${PROJECT_NAME} #${PROJECT_NAME}_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+#)
 
 ## Mark cpp header files for installation
-# install(DIRECTORY include/${PROJECT_NAME}/
-#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-#   FILES_MATCHING PATTERN "*.h"
-#   PATTERN ".svn" EXCLUDE
-# )
+install(DIRECTORY include/${PROJECT_NAME}/
+   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+   #FILES_MATCHING PATTERN "*.h"
+   PATTERN ".svn" EXCLUDE
+)
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
 # install(FILES

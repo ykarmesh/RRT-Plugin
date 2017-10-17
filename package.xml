@@ -34,15 +34,22 @@
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>std_msgs</build_depend>
+  <build_depend>rviz_visual_tools</build_depend>
+  <build_depend>base_local_planner</build_depend>
+  <build_depend>nav_core</build_depend>
   <run_depend>costmap_2d</run_depend>
   <run_depend>roscpp</run_depend>
   <run_depend>rospy</run_depend>
   <run_depend>std_msgs</run_depend>
+  <run_depend>rviz_visual_tools</run_depend>
+  <run_depend>base_local_planner</run_depend>
+  <run_depend>nav_core</run_depend>
 
+  <run_depend>teb_local_planner</run_depend>
+  <run_depend>move_base</run_depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
-    <!-- Other tools can request additional information be placed here -->
-
+    <nav_core plugin="${prefix}/rrt_plugin.xml"/>
   </export>
 </package>
