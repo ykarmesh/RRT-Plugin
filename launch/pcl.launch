@@ -1,0 +1,4 @@
+<launch>
+	<node pkg="rl_nav" type="pcl_filter" name="pcl_filter" required="true" launch-prefix="valgrind">
+	</node>
+</launch>

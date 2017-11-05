@@ -1,0 +1,8 @@
+<library path="lib/librrt_lib">
+	<class name="rrt_star/RRTPlan" type="rrt_star::RRTPlan" base_class_type="nav_core::BaseGlobalPlanner">
+		<description>
+			The rrt_star package implements a plugin
+			to the base_global_planner of the 2D navigation stack.
+		</description>
+	</class>
+</library>
