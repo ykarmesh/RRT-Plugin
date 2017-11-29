@@ -70,8 +70,6 @@
 
 #include <fstream>
 
-#include <rviz_visual_tools/rviz_visual_tools.h>
-
 #include "rrt_star/rrt.h"
 
 namespace ob = ompl::base;
@@ -262,8 +260,6 @@ public:
         visualization_msgs::Marker marker, line;
         //marker.action = visualization_msgs::Marker::DELETEALL;
   			//vis_pub.publish(marker);
-        //rviz_visual_tools::RvizVisualTools rviz_interface("map","/visualization_marker_array");
-        //rviz_interface.deleteAllMarkers();
 
         for (std::size_t idx = 0; idx < path->getStateCount (); idx++)
         {

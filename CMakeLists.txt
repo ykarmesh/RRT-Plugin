@@ -14,7 +14,6 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
-  rviz_visual_tools
   nav_core
 )
 
@@ -111,7 +110,7 @@ add_definitions(-std=c++11)
 catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES rrt_star
-#  CATKIN_DEPENDS costmap_2d roscpp rospy std_msgs rviz_visual_tools base_local_planner
+#  CATKIN_DEPENDS costmap_2d roscpp rospy std_msgs base_local_planner
   DEPENDS OMPL
 )
 
