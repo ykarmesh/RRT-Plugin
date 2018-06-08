@@ -40,7 +40,7 @@ namespace rrt_star{
       private_nh_.param("max_dist_bw_poses", max_dist_bw_poses_, 0.10);
       private_nh_.param("intermediate_poses", intermediate_poses_, true);
 
-      plan_pub_ = private_nh_.advertise<nav_msgs::Path>("plan", 1);
+      plan_pub_ = private_nh_.advertise<nav_msgs::Path>("global_plan", 1);
 
       costmap_ros_ = costmap_ros;
       costmap_ = costmap_ros->getCostmap();
@@ -142,6 +142,8 @@ namespace rrt_star{
         convertPath(path_, plan);
         pdef->clearSolutionPaths();
         delete path_;
+	base_local_planner::publishPlan(plan, plan_pub_); 
+	//plan_pub_.publish(plan);
         return true;
     }
     else
@@ -208,7 +210,7 @@ namespace rrt_star{
 
 		// init plan with start frame
 		longPath.push_back(path[0]);
-    CollisionChecker(path[0]);
+    		CollisionChecker(path[0]);
 		// make sure plan is dense enough to be processed by local planner
 		for(int i = 1; i < path.size(); i++)
 		{
